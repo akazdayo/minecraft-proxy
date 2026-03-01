@@ -1,0 +1,161 @@
+name: Build NixOS DigitalOcean Image
+
+on:
+  workflow_dispatch:
+    inputs:
+      host:
+        description: "flakeのnixosConfigurationsのホスト名（例: do, hal9000）"
+        required: true
+        default: "do"
+  schedule:
+    - cron: "0 3 * * *"
+
+concurrency:
+  group: do-image-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  flake-update:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      has_changes: ${{ steps.check_changes.outputs.has_changes }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v21
+
+      - name: Enable Magic Nix Cache
+        uses: DeterminateSystems/magic-nix-cache-action@v13
+        with:
+          use-flakehub: false
+
+      - name: Update flake.lock
+        run: nix flake update
+
+      - name: Check for changes
+        id: check_changes
+        run: |
+          if git diff --quiet flake.lock; then
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+            echo "No changes in flake.lock"
+          else
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+            echo "Changes detected in flake.lock"
+          fi
+
+      - name: Upload updated flake.lock
+        if: steps.check_changes.outputs.has_changes == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: flake-lock
+          path: flake.lock
+          if-no-files-found: error
+          retention-days: 1
+
+  build:
+    runs-on: ubuntu-latest
+    needs: flake-update
+    if: needs.flake-update.outputs.has_changes == 'true'
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Download updated flake.lock
+        uses: actions/download-artifact@v4
+        with:
+          name: flake-lock
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v21
+
+      - name: Enable Magic Nix Cache
+        uses: DeterminateSystems/magic-nix-cache-action@v13
+        with:
+          use-flakehub: false
+
+      - name: Build DigitalOcean image
+        run: nix build -L --option system-features "" ".#do-image"
+
+      - name: Locate image file
+        id: out
+        run: |
+          IMG=$(find -L result -type f -name '*.qcow2*' -print -quit)
+          test -f "$IMG"
+          echo "image_path=$IMG" >> "$GITHUB_OUTPUT"
+
+      - name: Upload image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nixos-digitalocean-${{ inputs.host || 'do' }}
+          path: ${{ steps.out.outputs.image_path }}
+          if-no-files-found: error
+          retention-days: 14
+
+  commit:
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download updated flake.lock
+        uses: actions/download-artifact@v4
+        with:
+          name: flake-lock
+
+      - name: Configure Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Commit and push changes
+        run: |
+          git add flake.lock
+          git commit -m "chore: update flake.lock"
+          git push
+
+  release:
+    runs-on: ubuntu-latest
+    needs: [build, commit]
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      # build job の成果物を取ってきて Release に載せる
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: nixos-digitalocean-${{ inputs.host || 'do' }}
+          path: dist
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: do-image-${{ github.run_number }}
+          files: dist/**
+          body: |
+            ## NixOS DigitalOcean Image
+
+            **Host:** `${{ inputs.host || 'do' }}`
+            **Run:** ${{ github.run_number }}
+            **Commit:** ${{ github.sha }}
+          draft: false
+          prerelease: false

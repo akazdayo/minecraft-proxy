@@ -1,0 +1,48 @@
+{
+  "data": {
+    "digitalocean_ssh_key": {
+      "default": {
+        "name": "default"
+      }
+    }
+  },
+  "output": {
+    "droplet_ip": {
+      "description": "The public IPv4 address of the Droplet",
+      "value": "${digitalocean_droplet.digitalocean-nix-tf.ipv4_address}"
+    }
+  },
+  "provider": {
+    "digitalocean": {}
+  },
+  "resource": {
+    "digitalocean_custom_image": {
+      "nixos": {
+        "name": "digitalocean-nix-tf",
+        "regions": [
+          "sgp1"
+        ],
+        "url": "https://github.com/akazdayo/digitalocean-nix-tf/releases/download/latest/nixos-digitalocean-do.qcow2.gz"
+      }
+    },
+    "digitalocean_droplet": {
+      "digitalocean-nix-tf": {
+        "image": "${digitalocean_custom_image.nixos.id}",
+        "name": "digitalocean-nix-tf",
+        "region": "sgp1",
+        "size": "s-1vcpu-1gb",
+        "ssh_keys": [
+          "${data.digitalocean_ssh_key.default.id}"
+        ]
+      }
+    }
+  },
+  "terraform": {
+    "required_providers": {
+      "digitalocean": {
+        "source": "digitalocean/digitalocean",
+        "version": "~> 2.75"
+      }
+    }
+  }
+}
