@@ -12,6 +12,15 @@
         path = deploy-rs.lib.x86_64-linux.activate.nixos self.nixosConfigurations.droplet;
       };
     };
+
+    nodes.proxmox = {
+      hostname = "PROXMOX_HOSTIP_HERE";
+      sshUser = "root";
+      profiles.system = {
+        user = "root";
+        path = deploy-rs.lib.x86_64-linux.activate.nixos self.nixosConfigurations.proxmox;
+      };
+    };
   };
 in
   deployConfig

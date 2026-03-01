@@ -1,13 +1,17 @@
-{pkgs, ...}: {
+{ pkgs, ... }:
+{
   # Nix
   nix.settings.experimental-features = [
     "nix-command"
     "flakes"
   ];
 
+  # LXC containers don't need bootloader configuration
+  # (boot settings are handled by proxmox-lxc.nix module)
+
   # Networking
-  networking.hostName = "digitalocean-nix-tf";
-  networking.firewall.allowedTCPPorts = [22 25565];
+  networking.hostName = "minecraft-fabric";
+  networking.firewall.allowedTCPPorts = [ 22 ];
 
   # SSH
   services.openssh = {
@@ -25,14 +29,6 @@
   environment.systemPackages = with pkgs; [
     vim
     git
-  ];
-
-  # Swap
-  swapDevices = [
-    {
-      device = "/var/lib/swapfile";
-      size = 3 * 1024;
-    }
   ];
 
   system.stateVersion = "26.05";

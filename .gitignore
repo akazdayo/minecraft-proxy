@@ -4,6 +4,9 @@
 # Local .terraform directories
 .terraform/
 
+# Proxmox Terraform state directory (separate from DO)
+terraform-proxmox/
+
 # .tfstate files
 *.tfstate
 *.tfstate.*
